@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagram Viewer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        :root {
+            --bg-deep: #0a1628;
+            --bg-surface: #111d32;
+            --border: #1e3a5f;
+            --border-hover: #2a5080;
+            --text-primary: #c8d6e5;
+            --text-secondary: #6b8299;
+            --accent: #e8a838;
+            --accent-hover: #f0b84d;
+            --accent-dim: rgba(232, 168, 56, 0.15);
+            --radius: 4px;
+            --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+            --font-body: 'JetBrains Mono', monospace;
+        }
+
+        .light-mode {
+            --bg-deep: #f5f0eb;
+            --bg-surface: #ffffff;
+            --border: #d4c5b5;
+            --border-hover: #b8a898;
+            --text-primary: #2c3e50;
+            --text-secondary: #7f8c8d;
+            --accent: #c47d1a;
+            --accent-hover: #d48a22;
+            --accent-dim: rgba(196, 125, 26, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        /* Header */
+        .header {
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            min-height: 48px;
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .header-filename {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-weight: 300;
+        }
+
+        .header-divider {
+            width: 1px;
+            height: 20px;
+            background: var(--border);
+        }
+
+        .controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        /* Buttons */
+        .btn {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            padding: 5px 12px;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 11px;
+            font-family: var(--font-mono);
+            font-weight: 400;
+            letter-spacing: 0.3px;
+            transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+
+        .btn:hover {
+            color: var(--accent);
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .btn:active {
+            background: rgba(232, 168, 56, 0.25);
+        }
+
+        .btn.nav-btn {
+            padding: 5px 8px;
+            min-width: 28px;
+            justify-content: center;
+        }
+
+        .nav-counter {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-weight: 300;
+        }
+
+        /* Select */
+        select {
+            padding: 5px 10px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            background: var(--bg-surface);
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-family: var(--font-mono);
+            cursor: pointer;
+            transition: border-color 0.2s ease, color 0.2s ease;
+        }
+
+        select:hover {
+            border-color: var(--accent);
+            color: var(--text-primary);
+        }
+
+        select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        /* Main container */
+        .diagram-container {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin: 12px 20px;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+            cursor: grab;
+            user-select: none;
+            -webkit-user-select: none;
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+
+        .diagram-container.panning {
+            cursor: grabbing;
+        }
+
+        /* Diagram */
+        #diagram {
+            max-width: 100%;
+            will-change: transform;
+            pointer-events: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #diagram svg {
+            transition: none;
+            pointer-events: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #diagram svg text,
+        #diagram svg span,
+        #diagram svg .nodeLabel,
+        #diagram svg .edgeLabel {
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Chart canvas */
+        #chartContainer {
+            width: 90%;
+            max-width: 900px;
+            height: 80%;
+            display: none;
+        }
+
+        #chartCanvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        /* Zoom controls */
+        .zoom-controls {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            padding: 6px;
+            border-radius: var(--radius);
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+
+        .zoom-btn {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            width: 30px;
+            height: 30px;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 16px;
+            font-family: var(--font-mono);
+            font-weight: 300;
+            transition: color 0.2s ease, border-color 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .zoom-btn:hover {
+            color: var(--accent);
+            border-color: var(--accent);
+        }
+
+        /* Watermark */
+        .watermark {
+            position: absolute;
+            bottom: 12px;
+            left: 20px;
+            font-size: 10px;
+            color: var(--accent);
+            font-weight: 300;
+            letter-spacing: 1px;
+            opacity: 0.6;
+        }
+
+        /* Help button */
+        .help-btn {
+            position: absolute;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            width: 24px;
+            height: 24px;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 12px;
+            font-family: var(--font-mono);
+            font-weight: 300;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s ease, border-color 0.2s ease;
+        }
+
+        .help-btn:hover {
+            color: var(--accent);
+            border-color: var(--accent);
+        }
+
+        /* Keyboard shortcut overlay */
+        .shortcuts-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(10, 22, 40, 0.92);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .shortcuts-overlay.visible {
+            display: flex;
+        }
+
+        .shortcuts-panel {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px 32px;
+            max-width: 360px;
+        }
+
+        .shortcuts-panel h3 {
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent);
+            margin-bottom: 16px;
+        }
+
+        .shortcut-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .shortcut-row:last-child {
+            border-bottom: none;
+        }
+
+        .shortcut-key {
+            font-size: 11px;
+            color: var(--accent);
+            font-weight: 500;
+            background: var(--accent-dim);
+            padding: 2px 8px;
+            border-radius: 3px;
+            border: 1px solid rgba(232, 168, 56, 0.3);
+        }
+
+        .shortcut-desc {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-weight: 300;
+        }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 300;
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 2px solid var(--border);
+            border-top: 2px solid var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Error */
+        .error-message {
+            background: var(--bg-surface);
+            border: 1px solid #e74c3c;
+            border-radius: var(--radius);
+            padding: 20px;
+            margin: 20px;
+            color: #e74c3c;
+            max-width: 600px;
+        }
+
+        .error-message h3 {
+            margin-bottom: 10px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .error-message pre {
+            background: var(--bg-deep);
+            padding: 10px;
+            border-radius: var(--radius);
+            overflow-x: auto;
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-family: var(--font-mono);
+        }
+
+        /* Edge labels */
+        #diagram svg .edgeLabel {
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        #diagram svg .edgeLabel foreignObject div span {
+            padding: 3px 8px;
+            display: inline-block;
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 10px;
+            font-family: var(--font-mono);
+            white-space: nowrap;
+        }
+
+        /* Mermaid overrides */
+        .mermaid {
+            text-align: center;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header {
+                padding: 8px 12px;
+            }
+
+            .diagram-container {
+                margin: 8px 12px;
+            }
+
+            .controls {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .header-divider {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <span class="header-title">diagram</span>
+            <div class="header-divider"></div>
+            <span class="header-filename" id="filename"></span>
+        </div>
+        <div class="controls">
+            <button class="btn nav-btn" id="prevBtn" onclick="navigatePrev()" title="Previous (Left arrow)" style="display:none;">
+                <span>&larr;</span>
+            </button>
+            <span class="nav-counter" id="diagramCounter" style="display:none;"></span>
+            <button class="btn nav-btn" id="nextBtn" onclick="navigateNext()" title="Next (Right arrow)" style="display:none;">
+                <span>&rarr;</span>
+            </button>
+            <select id="themeSelect" title="Change theme"></select>
+            <button class="btn" onclick="exportPNG()" title="Export as PNG">PNG</button>
+            <button class="btn" onclick="exportSVG()" title="Export as SVG">SVG</button>
+        </div>
+    </div>
+
+    <div class="diagram-container">
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>rendering...</p>
+        </div>
+        <div id="diagram"></div>
+        <div id="chartContainer">
+            <canvas id="chartCanvas"></canvas>
+        </div>
+        <div id="plotlyContainer" style="display:none; width:100%; height:100%;"></div>
+        <div class="zoom-controls" id="zoomControls">
+            <button class="zoom-btn" onclick="zoomIn()" title="Zoom in (+)">+</button>
+            <button class="zoom-btn" onclick="zoomReset()" title="Reset (r)">0</button>
+            <button class="zoom-btn" onclick="zoomOut()" title="Zoom out (-)">-</button>
+        </div>
+        <button class="help-btn" onclick="toggleHelp()" title="Keyboard shortcuts (?)">?</button>
+        <div class="watermark">claude code</div>
+
+        <div class="shortcuts-overlay" id="shortcutsOverlay">
+            <div class="shortcuts-panel">
+                <h3>Keyboard Shortcuts</h3>
+                <div class="shortcut-row">
+                    <span class="shortcut-desc">Zoom in</span>
+                    <span class="shortcut-key">+</span>
+                </div>
+                <div class="shortcut-row">
+                    <span class="shortcut-desc">Zoom out</span>
+                    <span class="shortcut-key">-</span>
+                </div>
+                <div class="shortcut-row">
+                    <span class="shortcut-desc">Reset view</span>
+                    <span class="shortcut-key">r</span>
+                </div>
+                <div class="shortcut-row">
+                    <span class="shortcut-desc">Previous diagram</span>
+                    <span class="shortcut-key">&larr;</span>
+                </div>
+                <div class="shortcut-row">
+                    <span class="shortcut-desc">Next diagram</span>
+                    <span class="shortcut-key">&rarr;</span>
+                </div>
+                <div class="shortcut-row">
+                    <span class="shortcut-desc">Toggle help</span>
+                    <span class="shortcut-key">?</span>
+                </div>
+                <div class="shortcut-row">
+                    <span class="shortcut-desc">Close overlay</span>
+                    <span class="shortcut-key">Esc</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Data injected by render_diagram.py
+        const renderMode = __RENDER_MODE__;
+        const diagramSyntax = __MERMAID_DIAGRAM__;
+        const chartConfig = __CHART_CONFIG__;
+        const plotlyConfig = __PLOTLY_CONFIG__;
+        const diagramList = __DIAGRAM_LIST__;
+        const currentFile = __CURRENT_FILE__;
+
+        // State
+        let currentZoom = 1;
+        let panX = 0;
+        let panY = 0;
+        let chartInstance = null;
+
+        // ── Theme Setup ──
+
+        const themeSelect = document.getElementById('themeSelect');
+
+        function populateThemes() {
+            const themes = (renderMode === 'chartjs' || renderMode === 'plotly')
+                ? [
+                    { value: 'dark', label: 'Dark' },
+                    { value: 'light', label: 'Light' }
+                ]
+                : [
+                    { value: 'dark', label: 'Dark' },
+                    { value: 'default', label: 'Default' },
+                    { value: 'forest', label: 'Forest' },
+                    { value: 'neutral', label: 'Neutral' }
+                ];
+
+            themeSelect.innerHTML = '';
+            themes.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t.value;
+                opt.textContent = t.label;
+                themeSelect.appendChild(opt);
+            });
+        }
+
+        function isLightTheme() {
+            const theme = themeSelect.value;
+            return theme !== 'dark';
+        }
+
+        function applyBodyTheme() {
+            document.body.classList.toggle('light-mode', isLightTheme());
+        }
+
+        // ── Navigation ──
+
+        function setupNavigation() {
+            document.getElementById('filename').textContent = currentFile || '';
+
+            if (diagramList.length > 1) {
+                const idx = diagramList.indexOf(currentFile);
+                document.getElementById('prevBtn').style.display = 'flex';
+                document.getElementById('nextBtn').style.display = 'flex';
+                document.getElementById('diagramCounter').style.display = 'inline';
+                document.getElementById('diagramCounter').textContent =
+                    (idx + 1) + ' / ' + diagramList.length;
+            }
+        }
+
+        function navigatePrev() {
+            const idx = diagramList.indexOf(currentFile);
+            const target = idx > 0 ? idx - 1 : diagramList.length - 1;
+            window.location.href = diagramList[target];
+        }
+
+        function navigateNext() {
+            const idx = diagramList.indexOf(currentFile);
+            const target = idx < diagramList.length - 1 ? idx + 1 : 0;
+            window.location.href = diagramList[target];
+        }
+
+        // ── Mermaid Rendering ──
+
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'dark',
+            securityLevel: 'loose',
+            flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
+            sequence: {
+                diagramMarginX: 50, diagramMarginY: 10,
+                actorMargin: 50, width: 150, height: 65,
+                boxMargin: 10, boxTextMargin: 5,
+                noteMargin: 10, messageMargin: 35
+            }
+        });
+
+        function parseColor(color) {
+            if (!color || color === 'none' || color === 'transparent') return null;
+
+            if (color.startsWith('rgb(') || color.startsWith('rgba(')) {
+                const inner = color.substring(color.indexOf('(') + 1, color.indexOf(')'));
+                const parts = inner.split(',').map(s => parseInt(s.trim()));
+                if (parts.length >= 3) return { r: parts[0], g: parts[1], b: parts[2] };
+            }
+
+            if (color.startsWith('#')) {
+                const hex = color.slice(1);
+                if (hex.length === 3) {
+                    return {
+                        r: parseInt(hex[0] + hex[0], 16),
+                        g: parseInt(hex[1] + hex[1], 16),
+                        b: parseInt(hex[2] + hex[2], 16)
+                    };
+                }
+                return {
+                    r: parseInt(hex.slice(0, 2), 16),
+                    g: parseInt(hex.slice(2, 4), 16),
+                    b: parseInt(hex.slice(4, 6), 16)
+                };
+            }
+            return null;
+        }
+
+        function getBrightness(color) {
+            const rgb = parseColor(color);
+            if (!rgb) return 255;
+            return (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
+        }
+
+        function adjustTextColors() {
+            const svg = document.querySelector('#diagram svg');
+            if (!svg) return;
+
+            const light = isLightTheme();
+
+            svg.querySelectorAll('g.node[data-node="true"]').forEach(node => {
+                const shape = node.querySelector('rect, polygon, circle, path, ellipse');
+                const label = node.querySelector('.nodeLabel');
+                if (shape && label) {
+                    const bgColor = shape.style.fill || window.getComputedStyle(shape).fill;
+                    if (bgColor && bgColor !== 'none' && bgColor !== 'transparent') {
+                        label.style.color = getBrightness(bgColor) < 150 ? '#ffffff' : '#000000';
+                    }
+                }
+            });
+
+            svg.querySelectorAll('.edgeLabel').forEach(label => {
+                label.style.color = light ? '#2c3e50' : '#c8d6e5';
+            });
+        }
+
+        function fixEdgeLabels() {
+            const svg = document.querySelector('#diagram svg');
+            if (!svg) return;
+
+            svg.querySelectorAll('.edgeLabel').forEach(label => {
+                const fo = label.querySelector('foreignObject');
+                const span = label.querySelector('foreignObject div span');
+                if (fo && span && span.textContent.trim()) {
+                    const textWidth = Math.max(span.textContent.trim().length * 8 + 24, 60);
+                    fo.setAttribute('width', textWidth.toString());
+                    fo.setAttribute('height', '28');
+                    const div = fo.querySelector('div');
+                    if (div) {
+                        div.style.display = 'flex';
+                        div.style.alignItems = 'center';
+                        div.style.justifyContent = 'center';
+                        div.style.width = '100%';
+                        div.style.height = '100%';
+                    }
+                }
+            });
+        }
+
+        async function renderMermaid() {
+            const diagramDiv = document.getElementById('diagram');
+            const loadingDiv = document.getElementById('loading');
+
+            try {
+                const { svg } = await mermaid.render('mermaidDiagram', diagramSyntax);
+                diagramDiv.innerHTML = svg;
+                loadingDiv.style.display = 'none';
+                enablePan();
+
+                // Use MutationObserver instead of setTimeout race conditions
+                const observer = new MutationObserver((mutations, obs) => {
+                    const svgEl = diagramDiv.querySelector('svg');
+                    if (svgEl) {
+                        fixEdgeLabels();
+                        adjustTextColors();
+                        obs.disconnect();
+                    }
+                });
+                observer.observe(diagramDiv, { childList: true, subtree: true });
+
+                // Also run immediately since innerHTML already set
+                fixEdgeLabels();
+                adjustTextColors();
+
+            } catch (error) {
+                console.error('Mermaid rendering error:', error);
+                loadingDiv.style.display = 'none';
+                diagramDiv.innerHTML =
+                    '<div class="error-message">' +
+                    '<h3>Rendering Error</h3>' +
+                    '<p>The diagram syntax may be invalid.</p>' +
+                    '<pre>' + escapeHtml(error.message) + '</pre>' +
+                    '<h3 style="margin-top:12px">Source</h3>' +
+                    '<pre>' + escapeHtml(diagramSyntax) + '</pre>' +
+                    '</div>';
+            }
+        }
+
+        // ── Chart.js Rendering ──
+
+        const chartPalette = {
+            dark: {
+                colors: ['#e8a838', '#4ecdc4', '#e76f51', '#a8dadc', '#f4a261',
+                         '#2ec4b6', '#e63946', '#83c5be', '#ffb703', '#8ecae6'],
+                gridColor: '#1e3a5f',
+                tickColor: '#6b8299',
+                titleColor: '#c8d6e5',
+                legendColor: '#c8d6e5',
+                bgColor: 'transparent'
+            },
+            light: {
+                colors: ['#c47d1a', '#2a9d8f', '#c44536', '#457b9d', '#e9c46a',
+                         '#1d8a7e', '#d62828', '#6ba3be', '#db9a00', '#3d7ea6'],
+                gridColor: '#d4c5b5',
+                tickColor: '#7f8c8d',
+                titleColor: '#2c3e50',
+                legendColor: '#2c3e50',
+                bgColor: 'transparent'
+            }
+        };
+
+        function getChartTheme() {
+            return isLightTheme() ? chartPalette.light : chartPalette.dark;
+        }
+
+        function renderChart() {
+            if (!chartConfig) return;
+
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('diagram').style.display = 'none';
+            document.getElementById('zoomControls').style.display = 'none';
+
+            const container = document.getElementById('chartContainer');
+            container.style.display = 'block';
+
+            const ctx = document.getElementById('chartCanvas').getContext('2d');
+            const theme = getChartTheme();
+
+            // Deep clone config so we can modify it
+            const config = JSON.parse(JSON.stringify(chartConfig));
+
+            // Apply theme colors to datasets
+            if (config.data && config.data.datasets) {
+                config.data.datasets.forEach((ds, i) => {
+                    const color = theme.colors[i % theme.colors.length];
+                    if (!ds.borderColor) ds.borderColor = color;
+                    if (!ds.backgroundColor) {
+                        if (config.type === 'line' || config.type === 'radar' || config.type === 'scatter') {
+                            ds.backgroundColor = color + '33';
+                        } else if (config.type === 'pie' || config.type === 'doughnut' || config.type === 'polarArea') {
+                            ds.backgroundColor = theme.colors.slice(0, (ds.data || []).length);
+                            ds.borderColor = isLightTheme() ? '#ffffff' : '#111d32';
+                        } else {
+                            ds.backgroundColor = color + 'aa';
+                        }
+                    }
+                    if (ds.borderWidth === undefined && config.type === 'line') {
+                        ds.borderWidth = 2;
+                    }
+                    if (ds.tension === undefined && config.type === 'line') {
+                        ds.tension = 0.3;
+                    }
+                    if (ds.pointRadius === undefined && config.type === 'line') {
+                        ds.pointRadius = 3;
+                    }
+                });
+            }
+
+            // Apply theme to options
+            if (!config.options) config.options = {};
+            if (!config.options.plugins) config.options.plugins = {};
+
+            // Title
+            if (config.options.plugins.title) {
+                config.options.plugins.title.color = theme.titleColor;
+                config.options.plugins.title.font = { family: "'JetBrains Mono', monospace", size: 14, weight: 500 };
+            }
+
+            // Legend
+            if (!config.options.plugins.legend) config.options.plugins.legend = {};
+            if (!config.options.plugins.legend.labels) config.options.plugins.legend.labels = {};
+            config.options.plugins.legend.labels.color = theme.legendColor;
+            config.options.plugins.legend.labels.font = { family: "'JetBrains Mono', monospace", size: 11 };
+
+            // Scales (for non-pie/doughnut)
+            if (config.type !== 'pie' && config.type !== 'doughnut' && config.type !== 'polarArea') {
+                if (!config.options.scales) config.options.scales = {};
+                ['x', 'y'].forEach(axis => {
+                    if (!config.options.scales[axis]) config.options.scales[axis] = {};
+                    if (!config.options.scales[axis].grid) config.options.scales[axis].grid = {};
+                    if (!config.options.scales[axis].ticks) config.options.scales[axis].ticks = {};
+                    config.options.scales[axis].grid.color = theme.gridColor;
+                    config.options.scales[axis].ticks.color = theme.tickColor;
+                    config.options.scales[axis].ticks.font = { family: "'JetBrains Mono', monospace", size: 10 };
+                });
+            }
+
+            config.options.responsive = true;
+            config.options.maintainAspectRatio = false;
+
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx, config);
+        }
+
+        // ── Plotly Rendering ──
+
+        function getPlotlyTheme() {
+            const light = isLightTheme();
+            return {
+                paper_bgcolor: light ? '#ffffff' : '#111d32',
+                plot_bgcolor: light ? '#f8f8f8' : '#0d1a2e',
+                font: {
+                    family: "'JetBrains Mono', monospace",
+                    color: light ? '#2c3e50' : '#c8d6e5',
+                    size: 11
+                },
+                gridcolor: light ? '#d4c5b5' : '#1e3a5f',
+                linecolor: light ? '#b8a898' : '#2a5080'
+            };
+        }
+
+        function renderPlotly() {
+            if (!plotlyConfig) return;
+
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('diagram').style.display = 'none';
+            document.getElementById('zoomControls').style.display = 'none';
+
+            const container = document.getElementById('plotlyContainer');
+            container.style.display = 'block';
+
+            const config = JSON.parse(JSON.stringify(plotlyConfig));
+            const theme = getPlotlyTheme();
+
+            // Apply theme to layout
+            if (!config.layout) config.layout = {};
+            config.layout.paper_bgcolor = theme.paper_bgcolor;
+            config.layout.plot_bgcolor = theme.plot_bgcolor;
+            if (!config.layout.font) config.layout.font = {};
+            config.layout.font.family = theme.font.family;
+            config.layout.font.color = theme.font.color;
+
+            // Apply theme to all axes (supports subplots: xaxis, xaxis2, yaxis, yaxis2, etc.)
+            Object.keys(config.layout).forEach(key => {
+                if (key.match(/^[xy]axis\d*$/)) {
+                    const axis = config.layout[key];
+                    if (!axis.gridcolor) axis.gridcolor = theme.gridcolor;
+                    if (!axis.linecolor) axis.linecolor = theme.linecolor;
+                    if (axis.tickfont) {
+                        axis.tickfont.family = theme.font.family;
+                    }
+                }
+            });
+
+            // Plotly display config
+            const displayConfig = Object.assign({
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+                displaylogo: false
+            }, config.config || {});
+
+            Plotly.newPlot(container, config.data, config.layout, displayConfig);
+        }
+
+        // ── Zoom & Pan ──
+
+        function zoomIn() { zoomToPoint(0, 0, currentZoom * 1.25); }
+        function zoomOut() { zoomToPoint(0, 0, currentZoom / 1.25); }
+
+        function zoomReset() {
+            currentZoom = 1;
+            panX = 0;
+            panY = 0;
+            applyTransform();
+        }
+
+        function zoomToPoint(offsetX, offsetY, newZoom) {
+            newZoom = Math.max(0.1, Math.min(20, newZoom));
+            const pointX = (offsetX - panX) / currentZoom;
+            const pointY = (offsetY - panY) / currentZoom;
+            currentZoom = newZoom;
+            panX = offsetX - pointX * currentZoom;
+            panY = offsetY - pointY * currentZoom;
+            applyTransform();
+        }
+
+        function applyTransform() {
+            const svg = document.querySelector('#diagram svg');
+            if (svg) {
+                svg.style.transform = 'translate(' + panX + 'px, ' + panY + 'px) scale(' + currentZoom + ')';
+                svg.style.transformOrigin = 'center';
+            }
+        }
+
+        // Mouse wheel zoom
+        document.querySelector('.diagram-container').addEventListener('wheel', function(e) {
+            if (renderMode === 'chartjs' || renderMode === 'plotly') return;
+            e.preventDefault();
+
+            const rect = e.currentTarget.getBoundingClientRect();
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            const offsetX = e.clientX - rect.left - centerX;
+            const offsetY = e.clientY - rect.top - centerY;
+
+            const pointX = (offsetX - panX) / currentZoom;
+            const pointY = (offsetY - panY) / currentZoom;
+
+            if (e.deltaY < 0) {
+                currentZoom = Math.min(currentZoom * 1.15, 20);
+            } else {
+                currentZoom = Math.max(currentZoom / 1.15, 0.1);
+            }
+
+            panX = offsetX - pointX * currentZoom;
+            panY = offsetY - pointY * currentZoom;
+            applyTransform();
+        });
+
+        // Pan
+        function enablePan() {
+            const container = document.querySelector('.diagram-container');
+            let isPanning = false;
+            let startX, startY, startPanX, startPanY;
+
+            container.addEventListener('mousedown', function(e) {
+                if (e.target.closest('.zoom-controls') || e.target.closest('button') ||
+                    e.target.closest('.shortcuts-overlay')) return;
+                e.preventDefault();
+                isPanning = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startPanX = panX;
+                startPanY = panY;
+                container.classList.add('panning');
+            });
+
+            document.addEventListener('mouseup', function() {
+                if (isPanning) {
+                    isPanning = false;
+                    container.classList.remove('panning');
+                }
+            });
+
+            document.addEventListener('mousemove', function(e) {
+                if (!isPanning) return;
+                e.preventDefault();
+                panX = startPanX + (e.clientX - startX);
+                panY = startPanY + (e.clientY - startY);
+                applyTransform();
+            });
+
+            container.addEventListener('dragstart', function(e) { e.preventDefault(); });
+        }
+
+        // ── Export ──
+
+        function exportPNG() {
+            if (renderMode === 'plotly') {
+                Plotly.downloadImage('plotlyContainer', {
+                    format: 'png', width: 1200, height: 700,
+                    filename: 'plotly_' + Date.now()
+                });
+                return;
+            }
+
+            if (renderMode === 'chartjs' && chartInstance) {
+                // Chart.js has built-in export
+                const a = document.createElement('a');
+                a.href = chartInstance.toBase64Image('image/png', 1);
+                a.download = 'chart_' + Date.now() + '.png';
+                a.click();
+                return;
+            }
+
+            const svg = document.querySelector('#diagram svg');
+            if (!svg) return;
+
+            const svgData = new XMLSerializer().serializeToString(svg);
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+
+            const bbox = svg.getBBox();
+            canvas.width = bbox.width + 40;
+            canvas.height = bbox.height + 40;
+
+            ctx.fillStyle = isLightTheme() ? '#ffffff' : '#111d32';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            img.onload = function() {
+                ctx.drawImage(img, 20, 20);
+                canvas.toBlob(function(blob) {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'diagram_' + Date.now() + '.png';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                });
+            };
+
+            const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+            img.src = URL.createObjectURL(svgBlob);
+            img.onload = function() {
+                ctx.drawImage(img, 20, 20);
+                URL.revokeObjectURL(img.src);
+                canvas.toBlob(function(blob) {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'diagram_' + Date.now() + '.png';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                });
+            };
+        }
+
+        function exportSVG() {
+            if (renderMode === 'chartjs' || renderMode === 'plotly') {
+                exportPNG();
+                return;
+            }
+
+            const svg = document.querySelector('#diagram svg');
+            if (!svg) return;
+
+            const svgData = new XMLSerializer().serializeToString(svg);
+            const blob = new Blob([svgData], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'diagram_' + Date.now() + '.svg';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // ── Keyboard Shortcuts ──
+
+        function toggleHelp() {
+            const overlay = document.getElementById('shortcutsOverlay');
+            overlay.classList.toggle('visible');
+        }
+
+        document.addEventListener('keydown', function(e) {
+            // Don't capture when typing in inputs
+            if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+
+            const overlay = document.getElementById('shortcutsOverlay');
+
+            switch (e.key) {
+                case '=':
+                case '+':
+                    e.preventDefault();
+                    zoomIn();
+                    break;
+                case '-':
+                    e.preventDefault();
+                    zoomOut();
+                    break;
+                case 'r':
+                    zoomReset();
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    navigatePrev();
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    navigateNext();
+                    break;
+                case '?':
+                    toggleHelp();
+                    break;
+                case 'Escape':
+                    if (overlay.classList.contains('visible')) {
+                        overlay.classList.remove('visible');
+                    }
+                    break;
+            }
+        });
+
+        // ── Helpers ──
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ── Theme Switching ──
+
+        themeSelect.addEventListener('change', async function() {
+            applyBodyTheme();
+
+            if (renderMode === 'plotly') {
+                renderPlotly();
+            } else if (renderMode === 'chartjs') {
+                renderChart();
+            } else {
+                mermaid.initialize({
+                    startOnLoad: false,
+                    theme: themeSelect.value,
+                    securityLevel: 'loose'
+                });
+
+                // Re-render mermaid (need to clear the old one first)
+                const diagramDiv = document.getElementById('diagram');
+                diagramDiv.innerHTML = '';
+                currentZoom = 1;
+                panX = 0;
+                panY = 0;
+
+                try {
+                    const { svg } = await mermaid.render('mermaidDiagram' + Date.now(), diagramSyntax);
+                    diagramDiv.innerHTML = svg;
+                    fixEdgeLabels();
+                    adjustTextColors();
+                    applyTransform();
+                } catch (err) {
+                    console.error('Re-render failed:', err);
+                }
+            }
+        });
+
+        // ── Init ──
+
+        populateThemes();
+        setupNavigation();
+        applyBodyTheme();
+
+        if (renderMode === 'plotly') {
+            renderPlotly();
+        } else if (renderMode === 'chartjs') {
+            renderChart();
+        } else {
+            renderMermaid();
+        }
+    </script>
+</body>
+</html>
